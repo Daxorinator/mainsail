@@ -53,9 +53,10 @@ file"). Minimum layer time is read from the slicer settings in the gcode file
    `speed_limiter` log lines. `sh install-k1.sh uninstall` removes everything.
 
 ## Caveats
-- The internals used exist in upstream Klipper v0.10.0 and v0.11.0, but
-  Creality's fork is unverified, and none of this has been run on a live
-  printer.
+- Verified on a Creality K1 (Creality's Klipper fork, Python 3.8, Moonraker
+  0.11.0, Mainsail v2.19.0). That fork is older than upstream v0.10 and names
+  the toolhead queue `move_queue` instead of `lookahead`; the extra handles
+  both. Other Klipper builds are untested.
 - If the per-move hook fails, the extra logs the error and falls back to
   coarse polling (requested speed, max velocity and speed override only).
 - If Creality's stock Klipper service rewrites `printer.cfg` on restart, check
