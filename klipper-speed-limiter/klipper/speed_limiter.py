@@ -26,6 +26,8 @@ class SpeedLimiter:
         self.records = collections.deque(maxlen=50000)  # (end, dur, MoveInfo)
         self.toolhead = self.gcode_move = self.print_stats = None
         self.hooked = False
+        self.n_tagged = self.n_fired = 0
+        self.debug = {}
         self.last_stalls = 0
         self.stall_events = collections.deque()
         self.layer_times = {}
@@ -69,6 +71,7 @@ class SpeedLimiter:
         if move is None or getattr(move, '_sl_tagged', False):
             return
         move._sl_tagged = True
+        self.n_tagged += 1
         if move.is_kinematic_move:
             allowed_nocap = min(speed, th.max_velocity)
         else:
@@ -96,7 +99,8 @@ class SpeedLimiter:
         move._sl_info = info
         move._sl_z = move.end_pos[2]
         def done(end_time, move=move):
-            dur = move.accel_t + move.cruise_t + move.decel_t
+            self.n_fired += 1
+            dur =move.accel_t + move.cruise_t + move.decel_t
             mi = core.MoveInfo(
                 info['requested'], info['allowed'], move.cruise_v,
                 info['move_d'], info['accel'], info['is_kinematic'],
@@ -164,6 +168,9 @@ class SpeedLimiter:
         return eventtime + UPDATE_INTERVAL
     def _do_update(self, eventtime):
         state = self._printing_state(eventtime)
+        self.debug = {'state': state, 'tagged': self.n_tagged,
+                      'fired': self.n_fired, 'records': len(self.records),
+                      'updated': eventtime}
         stalls = self.toolhead.print_stall
         if stalls > self.last_stalls:
             self.stall_events.append(eventtime)
@@ -174,6 +181,11 @@ class SpeedLimiter:
             self.status = self._make_status(core.Result(core.IDLE), None)
             return
         est, window, rec = self._current_records(eventtime)
+        self.debug['window'] = len(window)
+        self.debug['est_print_time'] = est
+        if self.records:
+            self.debug['first_end'] = self.records[0][0]
+            self.debug['last_end'] = self.records[-1][0]
         if not window and not self.hooked:
             rec = self._polled_record()
             window = [(est, 1., rec[2])]
@@ -208,6 +220,7 @@ class SpeedLimiter:
             'flow': mi.flow() if mi else 0.,
             'max_volumetric_flow': self.max_volumetric_flow,
             'hooked': self.hooked,
+            'debug': dict(self.debug),
         }
     def get_status(self, eventtime):
         return dict(self.status)
