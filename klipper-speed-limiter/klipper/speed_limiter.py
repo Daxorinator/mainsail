@@ -67,7 +67,9 @@ class SpeedLimiter:
             logging.exception("speed_limiter: failed to tag move")
     def _tag_last_move(self, speed):
         th = self.toolhead
-        move = th.lookahead.get_last()
+        # Older (Creality) forks call it move_queue instead of lookahead
+        queue = getattr(th, 'lookahead', None) or th.move_queue
+        move = queue.get_last()
         if move is None or getattr(move, '_sl_tagged', False):
             return
         move._sl_tagged = True

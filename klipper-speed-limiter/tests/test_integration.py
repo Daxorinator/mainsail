@@ -31,7 +31,7 @@ class FakeToolHead:
     max_velocity = 300.; max_accel = 3000.; junction_deviation = 0.01
     mcr_pseudo_accel = 1500.; print_stall = 0
     def __init__(self):
-        self.lookahead = th.LookAheadQueue(); self.pos = [0., 0., 0., 0.]
+        self.q = th.LookAheadQueue(); self.pos = [0., 0., 0., 0.]
         self.extra_axes = []
     def get_extruder(self): return Extruder()
     def move(self, newpos, speed):
@@ -42,15 +42,15 @@ class FakeToolHead:
         if not m.is_kinematic_move:
             m.limit_speed(25. / max(abs(m.axes_r[3]), 1e-9) * abs(m.axes_r[3]), 1e9)
         self.pos = list(m.end_pos)
-        self.lookahead.add_move(m)
+        self.q.add_move(m)
+    lookahead = property(lambda self: self.q)
 
 def run(moves):
     t = FakeToolHead(); s = sl.SpeedLimiter(Cfg())
     s.toolhead, s.gcode_move = t, GM()
     s.orig_move = t.move; t.move = s._move_wrapper
     for newpos, speed in moves: t.move(newpos, speed)
-    queued = list(t.lookahead.queue)
-    for m in t.lookahead.flush(): [cb(1.) for cb in m.timing_callbacks]
+    for m in t.q.flush(): [cb(1.) for cb in m.timing_callbacks]
     return [(core.classify(r[2], max_volumetric_flow=20.), r[2]) for r in s.records]
 
 def last(moves): return run(moves)[-1][0].reason
@@ -69,6 +69,15 @@ assert last(moves) in (core.ACCEL, core.JUNCTION), last(moves)
 # 90-degree corners
 moves = [([10, 0, 0, 0], 200.), ([10, 10, 0, 0], 200.), ([0, 10, 0, 0], 200.), ([0, 0, 0, 0], 200.)]
 assert last(moves) in (core.ACCEL, core.JUNCTION), last(moves)
+# older forks (Creality K1) name the queue move_queue, not lookahead
+class OldToolHead(FakeToolHead):
+    @property
+    def lookahead(self): raise AttributeError('lookahead')
+    move_queue = property(lambda self: self.q)
+_NewToolHead, FakeToolHead = FakeToolHead, OldToolHead
+assert last([([200, 0, 0, 1], 100.)]) == core.SLICER
+FakeToolHead = _NewToolHead
+
 # polling fallback must not report a bogus speed override
 t = FakeToolHead(); s = sl.SpeedLimiter(Cfg())
 s.toolhead, s.hooked = t, False
