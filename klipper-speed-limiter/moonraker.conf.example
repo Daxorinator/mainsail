@@ -1,0 +1,6 @@
+# Replaces the helper script's commented-out [update_manager mainsail] block
+[update_manager mainsail]
+type: web
+channel: stable
+repo: Daxorinator/mainsail
+path: /usr/data/mainsail

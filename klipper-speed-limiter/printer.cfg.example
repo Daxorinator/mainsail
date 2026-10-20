@@ -1,0 +1,6 @@
+[speed_limiter]
+# Your slicer's volumetric flow cap in mm^3/s (0 disables flow detection).
+max_volumetric_flow: 20
+# Optional. Leave unset to auto-detect from the gcode file's embedded slicer
+# settings (PrusaSlicer, OrcaSlicer, Cura); set a number to force it, 0 disables.
+#min_layer_time: 8

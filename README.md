@@ -1,3 +1,60 @@
+# Mainsail + speed limit display (fork)
+
+This is a fork of [Mainsail](https://github.com/mainsail-crew/mainsail) that
+adds one row under the ETA on the print status panel showing **what is
+currently limiting the print speed**: max volumetric flow, max velocity,
+acceleration, cornering, speed override, minimum layer time, Z/extruder caps
+and so on. It is designed for a **Creality K1** running the Guilouz Creality
+Helper Script, and needs the Klipper extra in
+[`klipper-speed-limiter/`](klipper-speed-limiter/).
+
+| Part | Where | What it does |
+| --- | --- | --- |
+| Klipper extra | `klipper-speed-limiter/` | Works out the speed limit and publishes it as the `speed_limiter` Klipper object |
+| Mainsail patch | `patches/speed-limit-display.patch` | Adds the row to `PrintstatusPrinting.vue` (hidden if `speed_limiter` is absent) and a locale string |
+| Release workflow | `.github/workflows/release-patched.yml` | Builds and publishes patched Mainsail releases automatically |
+
+## How upstream releases are pulled in, patched and re-released
+The default branch of this fork is `speed-limiter`. It holds only the patch,
+the workflow and the Klipper extra. `develop` and the other upstream branches
+are untouched, and upstream's own workflows are removed from this branch so
+none of them run here. The release workflow runs every 6 hours, and on demand
+from the Actions tab:
+
+1. Ask GitHub for the latest release of `mainsail-crew/mainsail`.
+2. If this fork already has a release with the same tag, stop.
+3. Otherwise check out that exact upstream tag (not a merge of branches),
+   apply every file in `patches/`, run `npm ci && npm run build` on Node 22,
+   and check the build contains the new UI.
+4. Publish a release in this fork with the **same tag** as upstream (for
+   example `v2.19.0`) and `mainsail.zip` attached. Using the same tag keeps
+   Moonraker's version comparison working.
+
+Notes:
+- If the patch no longer applies after an upstream change, the run fails and
+  GitHub notifies you. Update `patches/speed-limit-display.patch`, then run the
+  workflow again with *force* to replace the release.
+- Pre-releases are ignored. Only upstream's "latest" release is built.
+- GitHub disables scheduled workflows in repositories with no activity for 60
+  days. Re-enable it from the Actions tab if that happens.
+- To run it by hand: Actions, *Release patched Mainsail*, *Run workflow*. You
+  can give a tag to build, and tick *force* to rebuild an existing one.
+
+## Using it on the K1
+1. **One-time install.** Moonraker thinks an already-installed `v2.19.0` is
+   current, so deploy the first patched build by hand. Download `mainsail.zip`
+   from the [latest release](../../releases/latest), copy it to the K1, and run
+   `sh install-k1.sh mainsail mainsail.zip` from `klipper-speed-limiter/`.
+2. **Klipper side.** Follow `klipper-speed-limiter/README.md`.
+3. **Future updates.** In `moonraker.conf`, replace the helper script's
+   `[update_manager mainsail]` block with the one in
+   `klipper-speed-limiter/moonraker.conf.example`, which points at this fork.
+   Mainsail's update button then installs patched releases as they appear.
+   Reinstalling Mainsail with the Guilouz helper script installs upstream's
+   unpatched build, so redeploy the zip afterwards.
+
+---
+
 <p align="center">
   <a>
     <img src="https://raw.githubusercontent.com/mainsail-crew/docs/master/assets/img/logo.png" alt='Mainsail logo' height="152">
