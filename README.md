@@ -14,6 +14,10 @@ Helper Script, and needs the Klipper extra in
 | Mainsail patch | `patches/speed-limit-display.patch` | Adds the row to `PrintstatusPrinting.vue` (hidden if `speed_limiter` is absent) and a locale string |
 | Release workflow | `.github/workflows/release-patched.yml` | Builds and publishes patched Mainsail releases automatically |
 
+![](https://raw.githubusercontent.com/Daxorinator/mainsail-speed-limiter/refs/heads/speed-limiter/.github/max_volumetric_flow_rate_cap.png)
+![](https://raw.githubusercontent.com/Daxorinator/mainsail-speed-limiter/refs/heads/speed-limiter/.github/acceleration_cap.png)
+![](https://raw.githubusercontent.com/Daxorinator/mainsail-speed-limiter/refs/heads/speed-limiter/.github/slicer_feature_speed_cap.png)
+
 ## How upstream releases are pulled in, patched and re-released
 The default branch of this fork is `speed-limiter`. It holds only the patch,
 the workflow and the Klipper extra. `develop` and the other upstream branches
