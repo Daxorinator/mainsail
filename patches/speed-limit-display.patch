@@ -1,0 +1,60 @@
+diff --git a/src/components/panels/Status/PrintstatusPrinting.vue b/src/components/panels/Status/PrintstatusPrinting.vue
+index a97287b..3a1a283 100644
+--- a/src/components/panels/Status/PrintstatusPrinting.vue
++++ b/src/components/panels/Status/PrintstatusPrinting.vue
+@@ -127,6 +127,22 @@
+                     <span class="text-no-wrap">{{ eta }}</span>
+                 </v-col>
+             </v-row>
++            <v-row v-if="speedLimiter" class="text-center pt-0 pb-2 mt-0 mb-0" align="center">
++                <v-col class="pa-0">
++                    <v-tooltip top :disabled="!speedLimiterTooltip">
++                        <template #activator="{ on, attrs }">
++                            <div v-bind="attrs" class="text-center" v-on="on">
++                                <strong>{{ $t('Panels.StatusPanel.SpeedLimit') }}:</strong>
++                                {{ speedLimiter.label }}
++                                <span v-if="speedLimiter.detail" class="text--secondary">
++                                    ({{ speedLimiter.likely ? '~' : '' }}{{ speedLimiter.detail }})
++                                </span>
++                            </div>
++                        </template>
++                        <span>{{ speedLimiterTooltip }}</span>
++                    </v-tooltip>
++                </v-col>
++            </v-row>
+         </v-container>
+     </v-card-text>
+ </template>
+@@ -213,6 +229,20 @@ export default class StatusPanelPrintstatusPrinting extends Mixins(BaseMixin, Af
+         return this.$store.getters['printer/getEstimatedTimeAvg']
+     }
+ 
++    get speedLimiter() {
++        const limiter = this.$store.state.printer.speed_limiter ?? null
++        if (!limiter || !limiter.active || !limiter.label) return null
++
++        return limiter
++    }
++
++    get speedLimiterTooltip() {
++        const l = this.speedLimiter
++        if (!l) return ''
++
++        return `${Math.round(l.requested_speed)} mm/s requested, ${Math.round(l.cruise_speed)} mm/s planned, ${Number(l.flow).toFixed(1)} mm³/s`
++    }
++
+     get eta() {
+         return this.$store.getters['printer/getEstimatedTimeETAFormat']
+     }
+diff --git a/src/locales/en.json b/src/locales/en.json
+index 4d0753c..bdfdd3c 100644
+--- a/src/locales/en.json
++++ b/src/locales/en.json
+@@ -987,6 +987,7 @@
+             "EmptyJobqueue": "There is currently no file in the job queue.",
+             "Estimate": "Estimate",
+             "ETA": "ETA",
++            "SpeedLimit": "Speed limit",
+             "ExcludeObject": {
+                 "Excluded": "Excluded",
+                 "ExcludeObject": "Exclude Object",

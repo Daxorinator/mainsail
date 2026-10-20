@@ -1,0 +1,101 @@
+name: Release patched Mainsail
+
+# Builds every new upstream Mainsail release with the patches in patches/
+# applied and publishes mainsail.zip as a release of this fork, so Moonraker's
+# [update_manager mainsail] (type: web) can point at this repo.
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Upstream tag to build (default: latest upstream release)'
+        required: false
+      force:
+        description: 'Rebuild and replace the release if it already exists'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-patched
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve upstream tag
+        id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INPUT_TAG: ${{ inputs.tag }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          tag="$INPUT_TAG"
+          if [ -z "$tag" ]; then
+            tag="$(gh api repos/mainsail-crew/mainsail/releases/latest --jq .tag_name)"
+          fi
+          if ! echo "$tag" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'; then
+            echo "Refusing odd tag: $tag"; exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && [ "$FORCE" != "true" ]; then
+            echo "Release $tag already exists, nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          path: fork
+
+      - uses: actions/checkout@v4
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          repository: mainsail-crew/mainsail
+          ref: ${{ steps.tag.outputs.tag }}
+          path: mainsail
+
+      - uses: actions/setup-node@v4
+        if: steps.tag.outputs.skip != 'true'
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mainsail/package-lock.json
+
+      - name: Apply patches
+        if: steps.tag.outputs.skip != 'true'
+        working-directory: mainsail
+        run: |
+          for p in ../fork/patches/*.patch; do
+            echo "Applying $p"
+            git apply --check "$p"
+            git apply "$p"
+          done
+
+      - name: Build
+        if: steps.tag.outputs.skip != 'true'
+        working-directory: mainsail
+        run: |
+          npm ci
+          npm run build
+          test -f dist/mainsail.zip
+          grep -rq "Speed limit" dist/assets
+
+      - name: Publish release
+        if: steps.tag.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          gh release delete "$TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" mainsail/dist/mainsail.zip \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "$TAG + speed limiter" \
+            --notes "Upstream Mainsail $TAG with the speed limit display patch (patches/) applied. Upstream release notes: https://github.com/mainsail-crew/mainsail/releases/tag/$TAG" \
+            --latest
