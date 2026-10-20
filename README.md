@@ -18,8 +18,8 @@ Helper Script, and needs the Klipper extra in
 The default branch of this fork is `speed-limiter`. It holds only the patch,
 the workflow and the Klipper extra. `develop` and the other upstream branches
 are untouched, and upstream's own workflows are removed from this branch so
-none of them run here. The release workflow runs every 6 hours, and on demand
-from the Actions tab:
+none of them run here. The release workflow runs once a week (Mondays, 04:17
+UTC), and on demand from the Actions tab:
 
 1. Ask GitHub for the latest release of `mainsail-crew/mainsail`.
 2. If this fork already has a release with the same tag, stop.

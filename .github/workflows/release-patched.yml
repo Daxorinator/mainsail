@@ -6,7 +6,7 @@ name: Release patched Mainsail
 
 on:
   schedule:
-    - cron: '17 */6 * * *'
+    - cron: '17 4 * * 1'
   workflow_dispatch:
     inputs:
       tag:
