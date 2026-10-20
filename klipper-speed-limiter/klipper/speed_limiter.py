@@ -16,8 +16,12 @@ class SpeedLimiter:
     def __init__(self, config):
         self.printer = config.get_printer()
         self.reactor = self.printer.get_reactor()
-        self.max_volumetric_flow = config.getfloat(
-            'max_volumetric_flow', 0., minval=0.)
+        # None: read it from the gcode file, else infer it. 0 disables.
+        self.cfg_flow = config.getfloat('max_volumetric_flow', None,
+                                        minval=0.)
+        self.file_flow = None
+        self.tracker = core.FlowTracker()
+        self.settings_loaded = False
         self.min_layer_time = config.getfloat('min_layer_time', None,
                                               minval=0.)
         self.auto_min_layer_time = self.min_layer_time is None
@@ -56,6 +60,9 @@ class SpeedLimiter:
     def _reset_job(self, *args):
         self.layer_times.clear()
         self.cur_layer = self.cur_layer_start = self.last_layer_time = None
+        self.settings_loaded = False
+        self.file_flow = None
+        self.tracker = core.FlowTracker()
         if self.auto_min_layer_time:
             self.min_layer_time = 0.
     # Tag moves as they are queued
@@ -108,6 +115,7 @@ class SpeedLimiter:
                 info['move_d'], info['accel'], info['is_kinematic'],
                 info['cap_kind'], info['speed_factor'],
                 info['e_ratio'], info['filament_area'], info['max_velocity'])
+            self.tracker.observe(mi, dur)
             self.records.append((end_time, dur, mi, move._sl_z,
                                  info['e_ratio'] > 0.))
         move.timing_callbacks.append(done)
@@ -139,29 +147,41 @@ class SpeedLimiter:
                 self.last_layer_time = eventtime - self.cur_layer_start
             self.cur_layer = layer_z
             self.cur_layer_start = eventtime
-            self._maybe_load_slicer_settings()
-    def _maybe_load_slicer_settings(self):
-        if not (self.auto_min_layer_time and self.min_layer_time == 0.
-                and self.vsd is not None):
+    def _load_slicer_settings(self):
+        # Once per job: per-filament flow cap and min layer time that the
+        # slicer embedded in the gcode file (usually at the end).
+        self.settings_loaded = True
+        if self.vsd is None:
             return
         try:
             path = self.vsd.file_path()
             if not path:
+                self.settings_loaded = False  # file not open yet
                 return
             with open(path, 'rb') as f:
                 f.seek(0, os.SEEK_END)
                 size = f.tell()
-                f.seek(max(0, size - 65536))
-                tail = f.read().decode('utf-8', 'ignore')
-            val = core.parse_min_layer_time(tail)
-            if val is None:
-                # Some slicers place settings at the start
-                with open(path, 'rb') as f:
-                    val = core.parse_min_layer_time(
-                        f.read(65536).decode('utf-8', 'ignore'))
-            self.min_layer_time = val or -1.
+                f.seek(max(0, size - 262144))
+                text = f.read().decode('utf-8', 'ignore')
+                if (core.parse_max_volumetric_flow(text) is None
+                        and core.parse_min_layer_time(text) is None):
+                    f.seek(0)  # some slicers put the settings at the start
+                    text = f.read(65536).decode('utf-8', 'ignore')
+            self.file_flow = core.parse_max_volumetric_flow(text)
+            if self.auto_min_layer_time:
+                self.min_layer_time = core.parse_min_layer_time(text) or 0.
         except Exception:
-            self.min_layer_time = -1.  # don't retry every layer
+            logging.exception("speed_limiter: unable to read slicer settings")
+    def _flow_cap(self):
+        # (mm^3/s, source) of the flow limit in force, cap 0 = unknown
+        if self.cfg_flow is not None:
+            return self.cfg_flow, "config"
+        if self.file_flow:
+            return self.file_flow, "slicer file"
+        inferred = self.tracker.ceiling()
+        if inferred:
+            return inferred, "inferred"
+        return 0., None
     def _update(self, eventtime):
         try:
             self._do_update(eventtime)
@@ -182,6 +202,8 @@ class SpeedLimiter:
         if state not in ("printing", "paused"):
             self.status = self._make_status(core.Result(core.IDLE), None)
             return
+        if not self.settings_loaded:
+            self._load_slicer_settings()
         est, window, rec = self._current_records(eventtime)
         self.debug['window'] = len(window)
         self.debug['est_print_time'] = est
@@ -193,10 +215,13 @@ class SpeedLimiter:
             window = [(est, 1., rec[2])]
         self._track_layers(rec, eventtime)
         mlt = max(self.min_layer_time, 0.)
+        cap, source = self._flow_cap()
         kw = dict(state=state, stall_delta=len(self.stall_events),
-                  max_volumetric_flow=self.max_volumetric_flow,
+                  max_volumetric_flow=cap,
                   min_layer_time=mlt, last_layer_time=self.last_layer_time)
         res = core.classify_window(window, est, WINDOW, **kw)
+        if res.reason == core.VOLUMETRIC and source:
+            res.detail += ", %s" % (source,)
         self.status = self._make_status(res, rec[2] if rec else None)
     def _polled_record(self):
         # Coarse fallback: no per-move data, so only the requested speed,
@@ -210,6 +235,7 @@ class SpeedLimiter:
                            max_velocity=th.max_velocity)
         return (0., 0., mi, 0., False)
     def _make_status(self, res, mi):
+        cap, source = self._flow_cap()
         return {
             'active': res.reason not in (core.IDLE,),
             'reason': res.reason,
@@ -220,7 +246,8 @@ class SpeedLimiter:
             'requested_speed': mi.requested if mi else 0.,
             'cruise_speed': mi.cruise_v if mi else 0.,
             'flow': mi.flow() if mi else 0.,
-            'max_volumetric_flow': self.max_volumetric_flow,
+            'max_volumetric_flow': cap,
+            'max_volumetric_flow_source': source,
             'hooked': self.hooked,
             'debug': dict(self.debug),
         }

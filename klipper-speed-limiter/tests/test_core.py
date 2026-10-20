@@ -92,6 +92,45 @@ def test_window_ignores_old_records():
     recs = [(1.0, 1.0, mv(speed_factor=0.5))]
     assert c.classify_window(recs, 10., 1.5).reason == c.IDLE
 
+def test_parse_max_volumetric_flow():
+    p = c.parse_max_volumetric_flow
+    assert p("; filament_max_volumetric_speed = 16\n") == 16.
+    assert p("; filament_max_volumetric_speed = 15,12\n") == 15.
+    assert p("; filament_max_volumetric_speed = 21;18\n") == 21.
+    assert p("; filament_max_volumetric_speed = 0\n") is None
+    assert p("G1 X1\n") is None
+    # key mentioned in a list of changed settings must not match
+    assert p("; different_settings = a;filament_max_volumetric_speed;b\n") is None
+
+def test_flow_tracker_finds_plateau():
+    t = c.FlowTracker()
+    # flow = v * e_ratio * area: three feedrates all at ~16 mm3/s
+    for v in (80., 100., 120.):
+        t.observe(mv(requested=v, allowed=v, cruise_v=v,
+                     e_ratio=16. / (v * AREA)), 2.0)
+    cap = t.ceiling()
+    assert cap is not None and 16. <= cap <= 16.8, cap
+
+def test_flow_tracker_ignores_single_feedrate_and_blips():
+    t = c.FlowTracker()
+    # one feature at one speed (no evidence of a cap)
+    for _ in range(10):
+        t.observe(mv(requested=100., allowed=100., cruise_v=100.,
+                     e_ratio=0.1), 2.0)
+    assert t.ceiling() is None
+    # short blips of higher flow do not count
+    t.observe(mv(requested=100., allowed=100., cruise_v=100.,
+                 e_ratio=0.3), 0.2)
+    assert t.ceiling() is None
+
+def test_flow_tracker_ignores_unreached_speed_and_travel():
+    t = c.FlowTracker()
+    for v in (80., 100., 120.):
+        t.observe(mv(requested=v, allowed=v, cruise_v=v * 0.5,
+                     e_ratio=16. / (v * AREA)), 5.0)
+        t.observe(mv(requested=v, allowed=v, cruise_v=v, e_ratio=0.), 5.0)
+    assert t.ceiling() is None
+
 if __name__ == '__main__':
     # Runs without pytest
     n = 0

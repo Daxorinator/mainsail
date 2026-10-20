@@ -1,6 +1,12 @@
 [speed_limiter]
-# Your slicer's volumetric flow cap in mm^3/s (0 disables flow detection).
-max_volumetric_flow: 20
-# Optional. Leave unset to auto-detect from the gcode file's embedded slicer
-# settings (PrusaSlicer, OrcaSlicer, Cura); set a number to force it, 0 disables.
+# Both options below are optional. By default nothing needs to be set:
+#
+# Volumetric flow cap (mm^3/s). Unset: read the per-filament value the slicer
+# embeds in the gcode file (filament_max_volumetric_speed: PrusaSlicer,
+# OrcaSlicer, Creality Print), or else infer it from the print. A number forces
+# that value for every print; 0 turns flow detection off.
+#max_volumetric_flow: 20
+#
+# Minimum layer time (s). Unset: read from the gcode file's slicer settings.
+# A number forces it; 0 disables it.
 #min_layer_time: 8

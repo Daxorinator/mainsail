@@ -23,18 +23,27 @@ cornering, max velocity, speed override (M220), max volumetric flow, minimum
 layer time, slicer feature speed (nothing printer-side is limiting).
 
 Volumetric flow and minimum layer time are applied by the slicer, so Klipper
-only sees a lower F. These two are heuristics and are shown with `~`. Flow
-needs `max_volumetric_flow` in `speed_limiter.cfg`; minimum layer time is read
-from the slicer settings in the gcode file (PrusaSlicer, OrcaSlicer, Cura) or
-from `min_layer_time`.
+only sees a lower F. These two are heuristics and are shown with `~`. There
+is nothing to configure: the flow cap is found per print, in this order:
+1. `max_volumetric_flow` in `speed_limiter.cfg`, if you set it (0 turns flow
+   detection off).
+2. The per-filament `filament_max_volumetric_speed` that PrusaSlicer,
+   OrcaSlicer and Creality Print write into the gcode file.
+3. Inferred from the print: if a few seconds of extrusion sit at the same
+   highest flow while the feedrate varies, that flow is treated as a cap. This
+   is the least certain source and is for slicers that don't write the value.
+
+The row says which source was used (for example "24.1 of 16.0 mm³/s, slicer
+file"). Minimum layer time is read from the slicer settings in the gcode file
+(PrusaSlicer, OrcaSlicer, Cura), or from `min_layer_time` if you set it.
 
 ## Install on the K1
 1. Copy this folder to the printer, e.g.
    `scp -r klipper-speed-limiter root@<k1-ip>:/usr/data/`.
-2. Run `sh install-k1.sh install`, then edit
-   `/usr/data/printer_data/config/speed_limiter.cfg` and set
-   `max_volumetric_flow`. It backs up `printer.cfg` and adds
-   `[include speed_limiter.cfg]` above SAVE_CONFIG.
+2. Run `sh install-k1.sh install`. It creates
+   `/usr/data/printer_data/config/speed_limiter.cfg` (nothing in it needs
+   setting), backs up `printer.cfg` and adds `[include speed_limiter.cfg]`
+   above SAVE_CONFIG.
 3. Restart Klipper when not printing. `install --restart` does this and
    refuses to restart mid-print.
 4. Patched Mainsail: see the repository README.

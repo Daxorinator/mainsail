@@ -173,3 +173,62 @@ def classify_window(records, now, window=1.5, **kw):
                       if res.detail else "%.0f%% of recent moves"
                       % (share * 100.))
     return res
+
+
+_FLOW_RE = re.compile(
+    r"^;\s*filament_max_volumetric_speed\s*=\s*([0-9.;,\s]+)", re.M)
+
+
+def parse_max_volumetric_flow(text):
+    """Per-filament max volumetric speed (mm^3/s) from slicer settings.
+
+    PrusaSlicer, OrcaSlicer and Creality Print embed it; for several
+    filaments the first (T0) value is used. 0 means unlimited -> None.
+    """
+    for m in _FLOW_RE.findall(text):
+        nums = re.findall(r"[0-9]+(?:\.[0-9]+)?", m)
+        if nums:
+            val = float(nums[0])
+            return val if val > 0. else None
+    return None
+
+
+class FlowTracker(object):
+    """Infer a volumetric flow ceiling from the print itself.
+
+    A slicer flow limit scales the feedrate of wide/tall lines down so they
+    all land on the same flow. So if a good amount of extrusion time sits at
+    the same (highest) flow, spread over at least two clearly different
+    feedrates, that flow is probably a cap and not just one feature's speed.
+    """
+    BIN = 0.02          # relative width of a flow bin
+    MIN_TIME = 3.0      # seconds of extrusion at the plateau
+    MIN_SPREAD = 1.03   # fastest/slowest feedrate seen at the plateau
+
+    def __init__(self):
+        self.bins = {}
+
+    def observe(self, move, duration):
+        if (move.e_ratio <= 0. or duration <= 0.
+                or move.cruise_v < move.allowed * CRUISE_SLACK):
+            return
+        flow = move.flow()
+        if flow <= 0.:
+            return
+        idx = int(math.floor(math.log(flow) / math.log(1. + self.BIN)))
+        entry = self.bins.setdefault(idx, [0., set()])
+        entry[0] += duration
+        entry[1].add(int(round(move.requested)))
+
+    def ceiling(self):
+        """Estimated cap in mm^3/s, or None if no plateau is evident."""
+        for idx in sorted(self.bins, reverse=True):
+            time_t, speeds = self.bins[idx]
+            lower = self.bins.get(idx - 1)
+            if lower is not None:
+                time_t += lower[0]
+                speeds = speeds | lower[1]
+            if (time_t >= self.MIN_TIME and speeds
+                    and max(speeds) >= min(speeds) * self.MIN_SPREAD):
+                return (1. + self.BIN) ** (idx + 1)
+        return None

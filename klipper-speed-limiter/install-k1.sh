@@ -52,7 +52,7 @@ do_install() {
     done
     if [ ! -f "$CFG_DIR/speed_limiter.cfg" ]; then
         cp "$HERE/printer.cfg.example" "$CFG_DIR/speed_limiter.cfg"
-        echo "Created $CFG_DIR/speed_limiter.cfg - set max_volumetric_flow for your hotend."
+        echo "Created $CFG_DIR/speed_limiter.cfg (no settings needed; see the comments in it)."
     fi
     if ! grep -q "^\[include speed_limiter.cfg\]" "$CFG_DIR/printer.cfg"; then
         [ -f "$CFG_DIR/printer.cfg.pre-speed-limiter" ] \
